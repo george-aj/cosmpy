@@ -29,7 +29,6 @@ from ecdsa.util import sigencode_string, sigencode_string_canonize
 
 from cosmpy.crypto.interface import Signer
 
-
 def _base64_decode(value: str) -> bytes:
     try:
         return base64.b64decode(value)

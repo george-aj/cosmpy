@@ -26,6 +26,7 @@ from google.protobuf.any_pb2 import Any as ProtoAny
 from cosmpy.aerial.coins import parse_coins
 from cosmpy.crypto.interface import Signer
 from cosmpy.crypto.keypairs import PublicKey
+from evmosproto.ethermint.crypto.v1.ethsecp256k1.keys_pb2 import PubKey as EvmProtoPubKey
 from cosmpy.protos.cosmos.crypto.secp256k1.keys_pb2 import PubKey as ProtoPubKey
 from cosmpy.protos.cosmos.tx.signing.v1beta1.signing_pb2 import SignMode
 from cosmpy.protos.cosmos.tx.v1beta1.tx_pb2 import (
@@ -127,6 +128,61 @@ class Transaction:
         return self
 
     def seal(
+            self,
+            signing_cfgs: Union[SigningCfg, List[SigningCfg]],
+            fee: str,
+            gas_limit: int,
+            memo: Optional[str] = None,
+            wallet=None
+    ) -> "Transaction":
+        self._state = TxState.Sealed
+
+        input_signing_cfgs: List[SigningCfg] = (
+            signing_cfgs if _is_iterable(signing_cfgs) else [signing_cfgs]  # type: ignore
+        )
+
+        signer_infos = []
+        if hasattr(wallet, 'evmos'):
+
+            signer_infos.append(
+                SignerInfo(
+                    public_key=_wrap_in_proto_any([wallet.create_proto_pub_key()])[0],
+                    mode_info=ModeInfo(
+                        single=ModeInfo.Single(mode=SignMode.SIGN_MODE_DIRECT)
+                    ),
+                    sequence=input_signing_cfgs[0].sequence_num,
+                )
+            )
+        else:
+            for signing_cfg in input_signing_cfgs:
+                assert signing_cfg.mode == SigningMode.Direct
+                signer_infos.append(
+                    SignerInfo(
+                        public_key=_create_proto_public_key(signing_cfg.public_key),
+                        mode_info=ModeInfo(
+                            single=ModeInfo.Single(mode=SignMode.SIGN_MODE_DIRECT)
+                        ),
+                        sequence=signing_cfg.sequence_num,
+                    )
+                )
+
+        auth_info = AuthInfo(
+            signer_infos=signer_infos,
+            fee=Fee(amount=parse_coins(fee), gas_limit=gas_limit),
+        )
+
+        self._fee = fee
+
+        self._tx_body = TxBody()
+        self._tx_body.memo = memo or ""
+        self._tx_body.messages.extend(
+            _wrap_in_proto_any(self._msgs)
+        )  # pylint: disable=E1101
+
+        self._tx = Tx(body=self._tx_body, auth_info=auth_info)
+        return self
+    """
+    def seal(
         self,
         signing_cfgs: Union[SigningCfg, List[SigningCfg]],
         fee: str,
@@ -168,7 +224,7 @@ class Transaction:
 
         self._tx = Tx(body=self._tx_body, auth_info=auth_info)
         return self
-
+    """
     def sign(
         self,
         signer: Signer,

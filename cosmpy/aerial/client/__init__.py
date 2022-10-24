@@ -49,6 +49,7 @@ from cosmpy.crypto.address import Address
 from cosmpy.distribution.rest_client import DistributionRestClient
 from cosmpy.params.rest_client import ParamsRestClient
 from cosmpy.protos.cosmos.auth.v1beta1.auth_pb2 import BaseAccount
+from cosmpy.protos.cosmos.vesting.v1beta1.vesting_pb2 import BaseVestingAccount, PeriodicVestingAccount, ContinuousVestingAccount, DelayedVestingAccount
 from cosmpy.protos.cosmos.auth.v1beta1.query_pb2 import QueryAccountRequest
 from cosmpy.protos.cosmos.auth.v1beta1.query_pb2_grpc import QueryStub as AuthGrpcClient
 from cosmpy.protos.cosmos.bank.v1beta1.query_pb2 import (
@@ -87,16 +88,25 @@ from cosmpy.protos.cosmwasm.wasm.v1.query_pb2_grpc import (
 from cosmpy.staking.rest_client import StakingRestClient
 from cosmpy.tx.rest_client import TxRestClient
 
+from compounders.protobuf.osmosis.epochs.query_pb2_grpc import QueryStub as EpochGrpcClient
+from evmosproto.ethermint.types.v1.account_pb2 import EthAccount
+
 DEFAULT_QUERY_TIMEOUT_SECS = 15
 DEFAULT_QUERY_INTERVAL_SECS = 2
 COSMOS_SDK_DEC_COIN_PRECISION = 10**18
 
+BASE_ACCOUNT = '/cosmos.auth.v1beta1.BaseAccount'
+ETH_ACCOUNT = '/ethermint.types.v1.EthAccount'
+DELAYED_VESTING = '/cosmos.vesting.v1beta1.DelayedVestingAccount'
+CONTINUOUS_VESTING = '/cosmos.vesting.v1beta1.ContinuousVestingAccount'
+PERIODIC_VESTING = '/cosmos.vesting.v1beta1.PeriodicVestingAccount'
 
 @dataclass
 class Account:
     address: Address
     number: int
     sequence: int
+    pub_key: str
 
 
 @dataclass
@@ -170,6 +180,7 @@ class LedgerClient:
             self.staking = StakingGrpcClient(grpc_client)
             self.distribution = DistributionGrpcClient(grpc_client)
             self.params = QueryParamsGrpcClient(grpc_client)
+            self.epoch = EpochGrpcClient(grpc_client)
         else:
             rest_client = RestClient(parsed_url.rest_url)
 
@@ -199,16 +210,60 @@ class LedgerClient:
         request = QueryAccountRequest(address=str(address))
         response = self.auth.Account(request)
 
-        account = BaseAccount()
-        if not response.account.Is(BaseAccount.DESCRIPTOR):
-            raise RuntimeError("Unexpected account type returned from query")
-        response.account.Unpack(account)
+        if response.account.type_url == BASE_ACCOUNT:            
+            account = BaseAccount()
+            response.account.Unpack(account)
 
-        return Account(
-            address=address,
-            number=account.account_number,
-            sequence=account.sequence,
-        )
+            account_obj = Account(
+                address=address,
+                number=account.account_number,
+                sequence=account.sequence,
+                pub_key=account.pub_key
+            )  
+        elif response.account.type_url == ETH_ACCOUNT: 
+            account = EthAccount()
+            response.account.Unpack(account)
+            
+            account_obj = Account(
+                address=address,
+                number=account.base_account.account_number,
+                sequence=account.base_account.sequence,
+                pub_key=account.base_account.pub_key
+            )   
+        elif response.account.type_url == DELAYED_VESTING:
+            account = DelayedVestingAccount()
+            response.account.Unpack(account)
+
+            account_obj = Account(
+                address=address,
+                number=account.base_vesting_account.base_account.account_number,
+                sequence=account.base_vesting_account.base_account.sequence,
+                pub_key=account.base_vesting_account.base_account.pub_key
+            )
+        elif response.account.type_url == CONTINUOUS_VESTING:
+            account = ContinuousVestingAccount()
+            response.account.Unpack(account)
+
+            account_obj = Account(
+                address=address,
+                number=account.base_vesting_account.base_account.account_number,
+                sequence=account.base_vesting_account.base_account.sequence,
+                pub_key=account.base_vesting_account.base_account.pub_key
+            )
+        elif response.account.type_url == PERIODIC_VESTING:
+            account = PeriodicVestingAccount()
+            response.account.Unpack(account)
+
+            account_obj = Account(
+                address=address,
+                number=account.base_vesting_account.base_account.account_number,
+                sequence=account.base_vesting_account.base_account.sequence,
+                pub_key=account.base_vesting_account.base_account.pub_key
+            )
+        else:
+            raise RuntimeError("Unexpected account type returned from query")
+        
+        return account_obj
 
     def query_params(self, subspace: str, key: str) -> Any:
         req = QueryParamsRequest(subspace=subspace, key=key)
@@ -227,6 +282,19 @@ class LedgerClient:
         assert resp.balance.denom == denom  # sanity check
 
         return int(resp.balance.amount)
+    
+    def query_bank_balance_denom(self, address: Address, denom: Optional[str] = None) -> QueryBalanceRequest:
+        denom = denom or self.network_config.fee_denomination
+
+        req = QueryBalanceRequest(
+            address=str(address),
+            denom=denom,
+        )
+
+        resp = self.bank.Balance(req)
+        assert resp.balance.denom == denom  # sanity check
+
+        return resp
 
     def query_bank_all_balances(self, address: Address) -> List[Coin]:
 
@@ -421,7 +489,7 @@ class LedgerClient:
         return self._gas_strategy.estimate_gas(tx)
 
     def estimate_fee_from_gas(self, gas_limit: int) -> str:
-        return f"{gas_limit * self.network_config.fee_minimum_gas_price}{self.network_config.fee_denomination}"
+        return f"{str(int(float(gas_limit * self.network_config.fee_minimum_gas_price)))}{self.network_config.fee_denomination}"
 
     def estimate_gas_and_fee_for_tx(self, tx: Transaction) -> Tuple[int, str]:
         gas_estimate = self.estimate_gas_for_tx(tx)

@@ -45,6 +45,7 @@ def prepare_and_broadcast_basic_transaction(
             fee="",
             gas_limit=0,
             memo=memo,
+            wallet=sender  # Added by Gui-Evmos
         )
         tx.sign(sender.signer(), client.network_config.chain_id, account.number)
         tx.complete()
@@ -58,6 +59,7 @@ def prepare_and_broadcast_basic_transaction(
         fee=fee,
         gas_limit=gas_limit,
         memo=memo,
+        wallet=sender  # Added by Gui-Evmos
     )
     tx.sign(sender.signer(), client.network_config.chain_id, account.number)
     tx.complete()
