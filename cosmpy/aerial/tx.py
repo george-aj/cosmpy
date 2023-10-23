@@ -153,6 +153,10 @@ class Transaction:
                     sequence=input_signing_cfgs[0].sequence_num,
                 )
             )
+
+            if hasattr(wallet, 'evmos') and wallet.prefix == 'inj':
+                if signer_infos[0].public_key.type_url == '/ethermint.crypto.v1.ethsecp256k1.PubKey':
+                    signer_infos[0].public_key.type_url = '/injective.crypto.v1beta1.ethsecp256k1.PubKey'
         else:
             for signing_cfg in input_signing_cfgs:
                 assert signing_cfg.mode == SigningMode.Direct

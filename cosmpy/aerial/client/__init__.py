@@ -23,6 +23,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import certifi
+import cosmpy.protos.cosmos.tx.v1beta1.service_pb2
 import grpc
 
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -104,13 +105,15 @@ from cosmpy.tx.rest_client import TxRestClient
 
 from compounders.protobuf.osmosis.epochs.query_pb2_grpc import QueryStub as EpochGrpcClient
 from evmosproto.ethermint.types.v1.account_pb2 import EthAccount
+from compounders.protobuf.injective.injective.types.v1beta1.account_pb2 import EthAccount as InjEthAccount
 
 DEFAULT_QUERY_TIMEOUT_SECS = 15
 DEFAULT_QUERY_INTERVAL_SECS = 2
-COSMOS_SDK_DEC_COIN_PRECISION = 10 ** 18
+COSMOS_SDK_DEC_COIN_PRECISION = 10**18
 
 BASE_ACCOUNT = '/cosmos.auth.v1beta1.BaseAccount'
 ETH_ACCOUNT = '/ethermint.types.v1.EthAccount'
+INJ_ETH_ACCOUNT ='/injective.types.v1beta1.EthAccount'
 DELAYED_VESTING = '/cosmos.vesting.v1beta1.DelayedVestingAccount'
 CONTINUOUS_VESTING = '/cosmos.vesting.v1beta1.ContinuousVestingAccount'
 PERIODIC_VESTING = '/cosmos.vesting.v1beta1.PeriodicVestingAccount'
@@ -281,6 +284,16 @@ class LedgerClient:
                 sequence=account.base_account.sequence,
                 pub_key=account.base_account.pub_key
             )
+        elif response.account.type_url == INJ_ETH_ACCOUNT:
+            account =InjEthAccount()
+            response.account.Unpack(account)
+
+            account_obj = Account(
+                address=address,
+                number=account.base_account.account_number,
+                sequence=account.base_account.sequence,
+                pub_key=account.base_account.pub_key
+            )
         elif response.account.type_url == DELAYED_VESTING:
             account = DelayedVestingAccount()
             response.account.Unpack(account)
@@ -355,13 +368,13 @@ class LedgerClient:
         return [Coin(amount=coin.amount, denom=coin.denom) for coin in resp.balances]
 
     def send_tokens(
-            self,
-            destination: Address,
-            amount: int,
-            denom: str,
-            sender: Wallet,
-            memo: Optional[str] = None,
-            gas_limit: Optional[int] = None,
+        self,
+        destination: Address,
+        amount: int,
+        denom: str,
+        sender: Wallet,
+        memo: Optional[str] = None,
+        gas_limit: Optional[int] = None,
     ) -> SubmittedTx:
 
         # build up the store transaction
@@ -375,7 +388,7 @@ class LedgerClient:
         )
 
     def query_validators(
-            self, status: Optional[ValidatorStatus] = None
+        self, status: Optional[ValidatorStatus] = None
     ) -> List[Validator]:
         filtered_status = status or ValidatorStatus.BONDED
 
@@ -454,12 +467,12 @@ class LedgerClient:
         )
 
     def delegate_tokens(
-            self,
-            validator: Address,
-            amount: int,
-            sender: Wallet,
-            memo: Optional[str] = None,
-            gas_limit: Optional[int] = None,
+        self,
+        validator: Address,
+        amount: int,
+        sender: Wallet,
+        memo: Optional[str] = None,
+        gas_limit: Optional[int] = None,
     ) -> SubmittedTx:
         tx = Transaction()
         tx.add_message(
@@ -476,13 +489,13 @@ class LedgerClient:
         )
 
     def redelegate_tokens(
-            self,
-            current_validator: Address,
-            next_validator: Address,
-            amount: int,
-            sender: Wallet,
-            memo: Optional[str] = None,
-            gas_limit: Optional[int] = None,
+        self,
+        current_validator: Address,
+        next_validator: Address,
+        amount: int,
+        sender: Wallet,
+        memo: Optional[str] = None,
+        gas_limit: Optional[int] = None,
     ) -> SubmittedTx:
         tx = Transaction()
         tx.add_message(
@@ -500,12 +513,12 @@ class LedgerClient:
         )
 
     def undelegate_tokens(
-            self,
-            validator: Address,
-            amount: int,
-            sender: Wallet,
-            memo: Optional[str] = None,
-            gas_limit: Optional[int] = None,
+        self,
+        validator: Address,
+        amount: int,
+        sender: Wallet,
+        memo: Optional[str] = None,
+        gas_limit: Optional[int] = None,
     ) -> SubmittedTx:
 
         tx = Transaction()
@@ -523,11 +536,11 @@ class LedgerClient:
         )
 
     def claim_rewards(
-            self,
-            validator: Address,
-            sender: Wallet,
-            memo: Optional[str] = None,
-            gas_limit: Optional[int] = None,
+        self,
+        validator: Address,
+        sender: Wallet,
+        memo: Optional[str] = None,
+        gas_limit: Optional[int] = None,
     ) -> SubmittedTx:
         tx = Transaction()
         tx.add_message(create_withdraw_delegator_reward(sender.address(), validator))
@@ -548,10 +561,10 @@ class LedgerClient:
         return gas_estimate, fee
 
     def wait_for_query_tx(
-            self,
-            tx_hash: str,
-            timeout: Optional[timedelta] = None,
-            internal: Optional[timedelta] = None,
+        self,
+        tx_hash: str,
+        timeout: Optional[timedelta] = None,
+        internal: Optional[timedelta] = None,
     ) -> TxResponse:
         timeout = timeout or timedelta(seconds=DEFAULT_QUERY_TIMEOUT_SECS)
         internal = internal or timedelta(seconds=DEFAULT_QUERY_INTERVAL_SECS)

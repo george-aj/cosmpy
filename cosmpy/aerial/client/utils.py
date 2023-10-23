@@ -37,15 +37,28 @@ def prepare_and_broadcast_basic_transaction(
     if gas_limit is not None:
         # simply build the fee from the provided gas limit
         fee = client.estimate_fee_from_gas(gas_limit)
-    else:
 
+        # we need to build up a representative transaction so that we can accurately simulate it
+        tx.seal(
+            SigningCfg.direct(sender.public_key(), account.sequence),
+            fee=fee,
+            gas_limit=gas_limit,
+            memo=memo,
+            wallet=sender
+        )
+        tx.sign(sender.signer(), client.network_config.chain_id, account.number)
+        tx.complete()
+
+        # simulate the gas and fee for the transaction
+        gas_limit, fee = client.estimate_gas_and_fee_for_tx(tx)
+    else:
         # we need to build up a representative transaction so that we can accurately simulate it
         tx.seal(
             SigningCfg.direct(sender.public_key(), account.sequence),
             fee="",
             gas_limit=0,
             memo=memo,
-            wallet=sender  # Added by Gui-Evmos
+            wallet=sender
         )
         tx.sign(sender.signer(), client.network_config.chain_id, account.number)
         tx.complete()
@@ -59,9 +72,11 @@ def prepare_and_broadcast_basic_transaction(
         fee=fee,
         gas_limit=gas_limit,
         memo=memo,
-        wallet=sender  # Added by Gui-Evmos
+        wallet=sender
     )
     tx.sign(sender.signer(), client.network_config.chain_id, account.number)
     tx.complete()
+
+    print("Simulated gas: " + str(client.simulate_tx(tx)) + " Calculated gas: " + str(gas_limit))
 
     return client.broadcast_tx(tx)
